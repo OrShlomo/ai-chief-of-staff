@@ -6,6 +6,7 @@ Exposes two endpoints:
 """
 import logging
 import os
+import re
 
 import psycopg
 from fastapi import FastAPI, Response
@@ -18,6 +19,12 @@ logging.basicConfig(
 log = logging.getLogger("cos")
 
 app = FastAPI(title="AI Chief of Staff", version="0.1.0")
+
+
+def _redact(text: str) -> str:
+    """Strip credentials from error text before logging (URLs and key=value forms)."""
+    text = re.sub(r"(postgres(?:ql)?://)[^@\s]*@", r"\1***@", text)
+    return re.sub(r"(password\s*=\s*)\S+", r"\1***", text, flags=re.IGNORECASE)
 
 
 @app.get("/healthz")
@@ -35,7 +42,7 @@ def readyz(response: Response) -> dict:
         with psycopg.connect(url, connect_timeout=10) as conn:
             conn.execute("SELECT 1")
         return {"status": "ok", "db": "ok"}
-    except Exception as exc:  # never log the URL: it contains the password
-        log.error("database check failed: %s", type(exc).__name__)
+    except Exception as exc:
+        log.error("database check failed: %s: %s", type(exc).__name__, _redact(str(exc)))
         response.status_code = 503
         return {"status": "error", "db": "unreachable"}
