@@ -17,6 +17,17 @@ An AI "chief of staff" that manages a manager's time against their goals: weekly
 ## Endpoints
 - `GET /healthz` – process is up
 - `GET /readyz` – database reachable
+- `GET /oauth/google/start?key=…` – owner connects Google Calendar (read-only)
+- `GET /oauth/google/callback` – OAuth redirect target
+- `GET /calendar/week` (header `X-Admin-Key`) – next 7 days, all selected calendars, grouped by day
+
+Setup for the calendar connection: [docs/setup-google-calendar.md](docs/setup-google-calendar.md)
+
+## Code layout
+- `app/calendar/base.py` – provider-agnostic `CalendarProvider` interface (Outlook later)
+- `app/calendar/google.py` – Google implementation (OAuth + REST)
+- `app/security.py` – Fernet token encryption, signed OAuth state
+- `app/db.py` – Neon access, `oauth_tokens` table
 
 ## Run tests locally
 ```bash
