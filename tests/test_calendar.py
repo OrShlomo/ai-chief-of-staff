@@ -82,3 +82,25 @@ def test_start_requires_admin_key(monkeypatch):
     r = c.get("/oauth/google/start?key=admin")
     assert r.status_code == 307 and r.headers["location"].startswith("https://accounts.google.com/")
     assert c.get("/calendar/week", headers={"X-Admin-Key": "wrong"}).status_code == 403
+
+
+def test_calendar_ids_with_hash_are_url_encoded_and_failures_skipped():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/calendarList"):
+            return httpx.Response(200, json={"items": [
+                {"id": "iw.jewish#holiday@group.v.calendar.google.com", "summary": "Holidays", "selected": True},
+                {"id": "broken@x", "summary": "Broken", "selected": True},
+            ]})
+        seen.append(request.url.raw_path.decode())
+        if "broken" in request.url.path:
+            return httpx.Response(404)
+        return httpx.Response(200, json={"items": [
+            {"summary": "Holiday", "start": {"date": "2026-11-18"}, "end": {"date": "2026-11-19"}}]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    now = datetime(2026, 11, 15, tzinfo=timezone.utc)
+    events = google.GoogleCalendarProvider(client, "at", "Asia/Jerusalem").list_events(now, now + timedelta(days=7))
+    assert any("%23holiday" in p for p in seen)
+    assert [e.title for e in events] == ["Holiday"]

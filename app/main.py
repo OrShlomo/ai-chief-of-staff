@@ -122,7 +122,11 @@ def calendar_week(x_admin_key: str = Header(default="")) -> dict:
     start = datetime.now(timezone.utc)
     end = start + timedelta(days=7)
     with _http_client() as client:
-        access = google.refresh_access_token(client, s.google_client_id, s.google_client_secret, refresh)
+        try:
+            access = google.refresh_access_token(client, s.google_client_id, s.google_client_secret, refresh)
+        except httpx.HTTPStatusError as exc:
+            log.warning("google token refresh failed: HTTP %s", exc.response.status_code)
+            raise HTTPException(status_code=409, detail="Google connection expired or revoked; reconnect via /oauth/google/start")
         provider = google.GoogleCalendarProvider(client, access, s.timezone)
         events = provider.list_events(start, end)
 

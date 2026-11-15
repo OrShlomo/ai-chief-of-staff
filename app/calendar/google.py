@@ -1,6 +1,7 @@
 """Google Calendar implementation of CalendarProvider (OAuth 2.0 + REST)."""
 from datetime import datetime
-from urllib.parse import urlencode
+import logging
+from urllib.parse import quote, urlencode
 
 import httpx
 
@@ -9,6 +10,8 @@ from app.calendar.base import CalendarEvent
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 API = "https://www.googleapis.com/calendar/v3"
+
+log = logging.getLogger("cos.calendar")
 
 
 def build_auth_url(client_id: str, redirect_uri: str, scopes: list[str], state: str) -> str:
@@ -81,8 +84,14 @@ class GoogleCalendarProvider:
                 }
                 if page_token:
                     params["pageToken"] = page_token
-                r = self._client.get(f"{API}/calendars/{cal['id']}/events", headers=self._headers, params=params)
-                r.raise_for_status()
+                # Calendar IDs can contain '#' (e.g. holiday calendars) -> must be URL-encoded,
+                # otherwise everything after '#' is treated as a URL fragment.
+                cal_path = quote(cal["id"], safe="")
+                r = self._client.get(f"{API}/calendars/{cal_path}/events", headers=self._headers, params=params)
+                if r.status_code >= 400:
+                    # One broken calendar must not hide the whole week.
+                    log.warning("skipping calendar %s: HTTP %s", cal.get("summary", "?"), r.status_code)
+                    break
                 body = r.json()
                 for e in body.get("items", []):
                     if e.get("status") == "cancelled":
