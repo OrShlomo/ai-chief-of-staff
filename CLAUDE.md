@@ -62,7 +62,7 @@ Free tier: 6 active secret versions — 6 used after COS-33 setup (at the limit)
 - `app/config.py` — settings from env; `GOOGLE_SCOPES` = `calendar.readonly` (write scope comes with COS-23)
 - `app/security.py` — Fernet encrypt/decrypt, HMAC-signed OAuth `state`, constant-time compare
 - `app/db.py` — Neon access; table `oauth_tokens(provider PK, refresh_token_enc, scopes, updated_at)`
-- `app/main.py` `fetch_week()` — shared by `/calendar/week` and the bot; `POST /telegram/webhook` (secret header + owner allow-list)
+- `app/main.py` `fetch_week()` — current calendar week Sun–Sat local time (`week_bounds` in `calendar/base.py`), shared by `/calendar/week` and the bot; `POST /telegram/webhook` (secret header + owner allow-list)
 - `app/telegram.py` — Hebrew week formatting (HTML parse mode, escaped), webhook reply body
 - `app/calendar/base.py` — provider-agnostic `CalendarProvider` (Outlook later)
 - `app/calendar/google.py` — Google implementation; reads all *selected* calendars, expands recurring events

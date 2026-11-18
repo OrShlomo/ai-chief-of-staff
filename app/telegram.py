@@ -32,9 +32,11 @@ def _event_line(e: CalendarEvent) -> str:
     return line
 
 
-def format_week(events: list[CalendarEvent], start: datetime, tz: str) -> str:
-    """One block per day for the 7 days starting today (local date), free days included."""
-    first_day = start.astimezone(ZoneInfo(tz)).date()
+def format_week(events: list[CalendarEvent], week_start: datetime, now: datetime, tz: str) -> str:
+    """One block per day of the week starting at `week_start` (Sunday), free days included."""
+    zone = ZoneInfo(tz)
+    first_day = week_start.astimezone(zone).date()
+    today = now.astimezone(zone).date()
     by_day: dict[date, list[CalendarEvent]] = defaultdict(list)
     for e in events:
         by_day[date.fromisoformat(e.start[:10])].append(e)
@@ -43,7 +45,7 @@ def format_week(events: list[CalendarEvent], start: datetime, tz: str) -> str:
     for i in range(7):
         d = first_day + timedelta(days=i)
         header = f"<b>יום {HEBREW_DAYS[d.weekday()]} {d.day}.{d.month}</b>"
-        if i == 0:
+        if d == today:
             header += " (היום)"
         day_events = sorted(by_day.get(d, []), key=lambda e: (not e.all_day, e.start))
         lines = [_event_line(e) for e in day_events] or ["פנוי"]

@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main, telegram
-from app.calendar.base import CalendarEvent
+from app.calendar.base import CalendarEvent, week_bounds
 from app.main import app
 
 SECRET = "hook-secret"
@@ -79,17 +79,33 @@ def test_unexpected_error_still_returns_200(client, monkeypatch):
     assert r.status_code == 200 and r.json()["text"] == telegram.ERROR
 
 
+def test_week_bounds_is_sunday_to_saturday_in_local_time():
+    tz = "Asia/Jerusalem"
+    # Wednesday 18.11 -> week of Sunday 15.11 00:00 local until Sunday 22.11 00:00 local
+    start, end = week_bounds(datetime(2026, 11, 18, 9, 0, tzinfo=timezone.utc), tz)
+    assert start.isoformat() == "2026-11-15T00:00:00+02:00" and end.isoformat() == "2026-11-22T00:00:00+02:00"
+    # Saturday 23:30 UTC is already Sunday 01:30 in Israel -> the NEXT week starts
+    start, _ = week_bounds(datetime(2026, 11, 21, 23, 30, tzinfo=timezone.utc), tz)
+    assert start.date().isoformat() == "2026-11-22"
+    # Sunday itself belongs to its own week
+    start, _ = week_bounds(datetime(2026, 11, 15, 8, 0, tzinfo=timezone.utc), tz)
+    assert start.date().isoformat() == "2026-11-15"
+
+
 def test_format_week_groups_by_local_day_and_escapes():
-    # 23:30 UTC on Sunday is already Monday in Israel -> the week must start on Monday.
-    start = datetime(2026, 11, 15, 23, 30, tzinfo=timezone.utc)
+    tz = "Asia/Jerusalem"
+    start, _ = week_bounds(datetime(2026, 11, 16, 9, 0, tzinfo=timezone.utc), tz)
+    now = datetime(2026, 11, 15, 23, 30, tzinfo=timezone.utc)  # already Monday 16.11 in Israel
     events = [
         CalendarEvent("Me", "Late <meeting>", "2026-11-17T18:00:00+02:00", "2026-11-17T19:00:00+02:00", False, "Tel Aviv"),
         CalendarEvent("Me", "Early", "2026-11-17T08:00:00+02:00", "2026-11-17T08:30:00+02:00", False),
         CalendarEvent("Holidays", "Holiday", "2026-11-17", "2026-11-18", True),
     ]
-    text = telegram.format_week(events, start, "Asia/Jerusalem")
+    text = telegram.format_week(events, start, now, tz)
     assert "<b>יום שני 16.11</b> (היום)" in text
-    assert "<b>יום ראשון 22.11</b>" in text and "23.11" not in text
+    assert text.count("(היום)") == 1
+    days = [line for line in text.splitlines() if line.startswith("<b>יום")]
+    assert days[0].startswith("<b>יום ראשון 15.11") and days[-1].startswith("<b>יום שבת 21.11")
     tuesday = text.split("<b>יום שלישי 17.11</b>\n")[1].split("\n\n")[0].splitlines()
     assert tuesday == ["• כל היום  Holiday", "• 08:00–08:30  Early", "• 18:00–19:00  Late &lt;meeting&gt; (Tel Aviv)"]
     assert text.count("פנוי") == 6
@@ -98,4 +114,4 @@ def test_format_week_groups_by_local_day_and_escapes():
 def test_format_week_respects_telegram_length_limit():
     start = datetime(2026, 11, 16, 7, 0, tzinfo=timezone.utc)
     events = [CalendarEvent("Me", "x" * 100, "2026-11-16T09:00:00+02:00", "2026-11-16T10:00:00+02:00", False)] * 100
-    assert len(telegram.format_week(events, start, "Asia/Jerusalem")) <= telegram.MAX_MESSAGE_CHARS
+    assert len(telegram.format_week(events, start, start, "Asia/Jerusalem")) <= telegram.MAX_MESSAGE_CHARS

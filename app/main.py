@@ -5,13 +5,13 @@ Endpoints
   GET /readyz                  database reachable
   GET /oauth/google/start      owner starts Google Calendar consent (requires ?key=ADMIN_API_KEY)
   GET /oauth/google/callback   Google redirects here with an auth code
-  GET /calendar/week           events for the next 7 days, grouped by day (requires X-Admin-Key)
+  GET /calendar/week           events of this calendar week (Sun-Sat), grouped by day (requires X-Admin-Key)
   POST /telegram/webhook       Telegram bot updates (requires X-Telegram-Bot-Api-Secret-Token; owner only)
 """
 import logging
 import re
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import httpx
 from fastapi import Body, FastAPI, Header, HTTPException, Query, Response
@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app import db, security, telegram
 from app.calendar import google
-from app.calendar.base import CalendarEvent
+from app.calendar.base import CalendarEvent, week_bounds
 from app.config import GOOGLE_SCOPES, get_settings
 
 # Cloud Run collects stdout; JSON lines become structured logs with severity.
@@ -115,7 +115,7 @@ class CalendarNotConnected(Exception):
 
 
 def fetch_week(s) -> tuple[datetime, datetime, list[CalendarEvent]]:
-    """Events from now until now+7 days across all selected calendars.
+    """Events of the current calendar week (Sunday-Saturday, local time) across all selected calendars.
 
     Shared by the admin JSON endpoint and the Telegram bot so both always show the same week.
     """
@@ -125,8 +125,7 @@ def fetch_week(s) -> tuple[datetime, datetime, list[CalendarEvent]]:
         raise CalendarNotConnected("Google Calendar not connected; open /oauth/google/start first")
     refresh = security.decrypt(s.token_encryption_key, token_enc)
 
-    start = datetime.now(timezone.utc)
-    end = start + timedelta(days=7)
+    start, end = week_bounds(datetime.now(timezone.utc), s.timezone)
     with _http_client() as client:
         try:
             access = google.refresh_access_token(client, s.google_client_id, s.google_client_secret, refresh)
@@ -194,7 +193,7 @@ def telegram_webhook(
             text = telegram.NOT_CONFIGURED
         else:
             start, _end, events = fetch_week(s)
-            text = telegram.format_week(events, start, s.timezone)
+            text = telegram.format_week(events, start, datetime.now(timezone.utc), s.timezone)
     except CalendarNotConnected:
         text = telegram.RECONNECT
     except Exception as exc:

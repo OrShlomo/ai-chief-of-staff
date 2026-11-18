@@ -58,7 +58,7 @@ unset TOKEN HOOK
 Expect `"ok":true` and, in `getWebhookInfo`, the URL with no `last_error_message`.
 
 ## 6. Verify (acceptance criteria)
-1. Send `/week` to the bot → a Hebrew message with the next 7 days, grouped by day.
+1. Send `/week` to the bot → a Hebrew message with this calendar week (Sunday–Saturday), grouped by day.
 2. Send any other text → the same reply.
 3. From another Telegram account (ask a friend) → no reply at all.
 4. `curl -s -o /dev/null -w '%{http_code}\n' -X POST https://ai-chief-of-staff-838175899464.europe-west1.run.app/telegram/webhook -H 'Content-Type: application/json' -d '{}'` → `403`.
