@@ -1,6 +1,7 @@
 """Runtime configuration, read from environment variables.
 
-Secrets (DATABASE_URL, GOOGLE_CLIENT_SECRET, TOKEN_ENCRYPTION_KEY, ADMIN_API_KEY)
+Secrets (DATABASE_URL, GOOGLE_CLIENT_SECRET, TOKEN_ENCRYPTION_KEY, ADMIN_API_KEY,
+TELEGRAM_WEBHOOK_SECRET)
 are injected by Cloud Run from Secret Manager. Nothing secret lives in the repo.
 """
 import os
@@ -20,6 +21,12 @@ class Settings:
     token_encryption_key: str | None
     admin_api_key: str | None
     timezone: str
+    telegram_webhook_secret: str | None = None
+    telegram_owner_id: str | None = None
+
+    @property
+    def telegram_configured(self) -> bool:
+        return bool(self.telegram_webhook_secret and self.telegram_owner_id)
 
     @property
     def google_oauth_configured(self) -> bool:
@@ -43,4 +50,6 @@ def get_settings() -> Settings:
         token_encryption_key=os.environ.get("TOKEN_ENCRYPTION_KEY"),
         admin_api_key=os.environ.get("ADMIN_API_KEY"),
         timezone=os.environ.get("APP_TIMEZONE", "Asia/Jerusalem"),
+        telegram_webhook_secret=os.environ.get("TELEGRAM_WEBHOOK_SECRET"),
+        telegram_owner_id=(os.environ.get("TELEGRAM_OWNER_ID") or "").strip() or None,
     )
