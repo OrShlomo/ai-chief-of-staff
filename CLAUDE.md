@@ -48,19 +48,27 @@ Cost target ≈ $0 apart from LLM usage. A budget alert exists (promotional cred
 | `GOOGLE_CLIENT_SECRET` | secret `google-client-secret` | |
 | `TOKEN_ENCRYPTION_KEY` | secret `token-encryption-key` | Fernet key, generated |
 | `ADMIN_API_KEY` | secret `admin-api-key` | generated; guards owner-only endpoints |
+| `TELEGRAM_WEBHOOK_SECRET` | secret `telegram-webhook-secret` | generated; Telegram sends it in `X-Telegram-Bot-Api-Secret-Token` |
+| `TELEGRAM_OWNER_ID` | plain env var | owner's Telegram user id; everyone else is ignored |
+
+Secret `telegram-bot-token` exists for the owner (setWebhook) but is **not** mounted on the service and
+the runtime SA has no access to it: replies go in the webhook response body (COS-33).
 
 IAM: the runtime SA has `roles/secretmanager.secretAccessor` **per secret** (least privilege), not project-wide.
-Free tier: 6 active secret versions — currently 4 used. New secrets must be granted the same way.
+Free tier: 6 active secret versions — 6 used after COS-33 setup (at the limit). New secrets must be granted the same way.
 
 ## Code layout
 - `app/main.py` — routes: `/healthz`, `/readyz`, `/oauth/google/start?key=`, `/oauth/google/callback`, `/calendar/week` (header `X-Admin-Key`)
 - `app/config.py` — settings from env; `GOOGLE_SCOPES` = `calendar.readonly` (write scope comes with COS-23)
 - `app/security.py` — Fernet encrypt/decrypt, HMAC-signed OAuth `state`, constant-time compare
 - `app/db.py` — Neon access; table `oauth_tokens(provider PK, refresh_token_enc, scopes, updated_at)`
+- `app/main.py` `fetch_week()` — current calendar week Sun–Sat local time (`week_bounds` in `calendar/base.py`), shared by `/calendar/week` and the bot; `POST /telegram/webhook` (secret header + owner allow-list)
+- `app/telegram.py` — Hebrew week formatting (HTML parse mode, escaped), webhook reply body
 - `app/calendar/base.py` — provider-agnostic `CalendarProvider` (Outlook later)
 - `app/calendar/google.py` — Google implementation; reads all *selected* calendars, expands recurring events
 - `tests/` — pytest; Google API is mocked with `httpx.MockTransport`
 - `docs/setup-google-calendar.md` — one-time owner setup for COS-22
+- `docs/setup-telegram-bot.md` — one-time owner setup for COS-33
 
 Run tests: `pip install -r requirements-dev.txt && pytest`
 
@@ -79,13 +87,13 @@ Goal: validate the core loop by hand (concierge week) and stand up a walking ske
 | COS-15 | Concierge test (manual week) — learnings logged as comments | In Progress (review at end of week) |
 | COS-31 | Hosting, DB, secrets, CI | Done |
 | COS-22 | Google Calendar OAuth + read week | Done |
-| **COS-33** | **Walking skeleton: Telegram bot replies with this week's events** | **Next** |
+| **COS-33** | **Walking skeleton: Telegram bot replies with this week's events** | **In Progress — code done, owner setup pending** |
 | COS-26 | Spike: routing APIs with predicted traffic (Waze has no open routing API AFAWK; check Google Routes etc.) | To do |
 | COS-13 | Interviews with 5 managers (stretch: 2 of 5) | To do |
 
 Backlog tech debt: COS-34 dedicated runtime SA, COS-35 validate DATABASE_URL at startup, COS-36 publish OAuth app.
 
-## Next task: COS-33 (acceptance criteria from Jira)
+## COS-33 (acceptance criteria from Jira) — implemented; finish via docs/setup-telegram-bot.md
 - Sending `/week` (or any message) to the bot returns this week's events, grouped by day
 - Runs on the deployed Cloud Run service, not a laptop
 - Only the owner's Telegram account can use the bot
